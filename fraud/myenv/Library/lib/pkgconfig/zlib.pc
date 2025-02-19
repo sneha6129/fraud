@@ -1,0 +1,13 @@
+prefix=D:/QRIOCITY/315/myenv/Library
+exec_prefix=D:/QRIOCITY/315/myenv/Library
+libdir=D:/QRIOCITY/315/myenv/Library/lib
+sharedlibdir=D:/QRIOCITY/315/myenv/Library/lib
+includedir=D:/QRIOCITY/315/myenv/Library/include
+
+Name: zlib
+Description: zlib compression library
+Version: 1.2.13
+
+Requires:
+Libs: -L${libdir} -L${sharedlibdir} -lz
+Cflags: -I${includedir}
