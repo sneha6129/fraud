@@ -194,12 +194,19 @@ def logout():
     st.sidebar.image(image_path, use_container_width=True)
     st.success("✅ Logged out successfully!")
     st.rerun()
+def load_model(model_name):
+    model_path = os.path.join("models", model_name)
+    if os.path.exists(model_path):
+        return joblib.load(model_path)
+    else:
+        raise FileNotFoundError(f"Error: {model_name} not found in 'models' folder.")
+
 
 # Load Models
 models = {
     "Credit Card Fraud": {
-        "rf_model": joblib.load("Credit_Card_Fraud_rf_model.pkl"),
-        "xgb_model": joblib.load("Credit_Card_Fraud_xgb_model.pkl"),
+        "rf_model": load_model("Credit_Card_Fraud_rf_model.pkl"),
+        "xgb_model": load_model("Credit_Card_Fraud_xgb_model.pkl"),
         "features": [
             "cc_num", "merchant", "category", "amount", "gender", "lat", "long", "city_pop",
             "trans_num", "unix_time", "day_of_week"
@@ -223,8 +230,8 @@ models = {
         "categorical_features": ["category", "gender","merchant"]
     },
     "UPI Fraud": {
-        "rf_model": joblib.load("UPI_Fraud_rf_model.pkl"),
-        "xgb_model": joblib.load("UPI_Fraud_xgb_model.pkl"),
+        "rf_model": load_model("UPI_Fraud_rf_model.pkl"),
+        "xgb_model": load_model("UPI_Fraud_xgb_model.pkl"),
         "features": [
             "amount", "MerchantCategory", "TransactionType", "Latitude", "Longitude", 
             "AvgTransactionAmount", "TransactionFrequency", "UnusualLocation", 
@@ -243,8 +250,8 @@ models = {
         "categorical_features": ["MerchantCategory", "TransactionType", "UnusualLocation", "UnusualAmount", "NewDevice"]
     },
     "Bank Account Fraud": {
-        "rf_model": joblib.load("Bank_Account_Fraud_rf_model.pkl"),
-        "xgb_model": joblib.load("Bank_Account_Fraud_xgb_model.pkl"),
+        "rf_model": load_model("Bank_Account_Fraud_rf_model.pkl"),
+        "xgb_model":load_model("Bank_Account_Fraud_xgb_model.pkl"),
         "features": [
             "income", "name_email_similarity", "prev_address_months_count", 
             "current_address_months_count", "customer_age", "days_since_request",
