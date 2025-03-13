@@ -1,7 +1,9 @@
 import streamlit as st
 from supabase import Client, create_client
 import bcrypt
-
+import io
+import os
+import base64
 import re
 import pandas as pd
 import numpy as np
@@ -11,7 +13,7 @@ import hashlib
 import joblib
 import random
 from datetime import datetime
-
+import matplotlib.pyplot as plt
 
 supabase_url = "https://jzydlydujbhwdxqntsxu.supabase.co"
 supabase_key = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp6eWRseWR1amJod2R4cW50c3h1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDA1NDc1MjMsImV4cCI6MjA1NjEyMzUyM30.K2j-XqM6wd56d53LRtBc_h3-pB_6sdX1fymxkLGlcIk"
@@ -61,6 +63,35 @@ def is_valid_username(username):
     # Username must be between 3 and 20 characters long and contain only alphanumeric characters
     pattern = r"^[a-zA-Z0-9_]{3,20}$"
     return re.match(pattern, username)
+def add_background_image(image_path):
+    # Read the image file
+    with open(image_path, "rb") as image_file:
+        img_bytes = image_file.read()
+        b64_img = base64.b64encode(img_bytes).decode()
+
+    # Create CSS for the background image
+    st.markdown(
+        f"""
+        <style>
+        .stApp {{
+            background-image: url(data:image/jpeg;base64,{b64_img});
+            background-size: cover;
+            background-repeat: no-repeat;
+            background-position: center;
+        }}
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
+
+# Path to your background image (ensure this file exists in the same directory)
+image_path = "bg1.jpg"  # Change this to your image file name
+
+# Check if the image file exists
+if os.path.exists(image_path):
+    add_background_image(image_path)
+else:
+    st.warning("⚠️ Background image not found. Please ensure the image file is in the project directory.")
 
 def signup():
     st.subheader("🔑 Create an Account")
@@ -174,6 +205,7 @@ models = {
             "trans_num", "unix_time", "day_of_week"
         ],
         "numeric_ranges": {
+            
             "amount": (1.0, 1e6),  # Adjusted max value
               # Adjusted max value
             "city_pop": (0, 10000000),  # Adjusted max value
@@ -246,6 +278,48 @@ models = {
         "categorical_features": ["payment_type", "employment_status", "housing_status", "UnusualLocation", "UnusualAmount","phone_home_valid","phone_mobile_valid","foreign_request","has_other_cards","email_is_free"]
     }
 }
+def detect_fraud_column(df):
+    fraud_keywords = ["fraud", "isfraud", "fraudbool", "scam", "fraudulent", "flagged_fraud"]
+    for col in df.columns:
+        for keyword in fraud_keywords:
+            if keyword in col.lower():
+                return col
+    return None
+
+# Function to determine fraud indicator values
+def detect_fraud_value(df, fraud_column):
+    unique_values = df[fraud_column].dropna().unique()
+    common_fraud_values = {1, "1", 1.0, "1.0", "yes", "fraud", "true", "fraudulent", "scam", True}
+
+    for val in unique_values:
+        if str(val).strip().lower() in map(str, common_fraud_values):
+            return val  # Return detected fraud value
+    return None
+
+# Function to display fraud transactions from uploaded CSV
+def detect_fraud_column(df):
+    fraud_keywords = ["fraud", "isfraud", "fraudbool", "scam", "fraudulent", "flagged_fraud"]
+    for col in df.columns:
+        for keyword in fraud_keywords:
+            if keyword in col.lower():
+                return col
+    return None
+
+def detect_fraud_value(df, fraud_column):
+    unique_values = df[fraud_column].dropna().unique()
+    common_fraud_values = {1, "1", 1.0, "1.0", "yes", "fraud", "true", "fraudulent", "scam", True}
+
+    for val in unique_values:
+        if str(val).strip().lower() in map(str, common_fraud_values):
+            return val  # Return detected fraud value
+    
+    return None  # No fraud value found
+
+# Streamlit App Title
+
+
+# **Handle CSV Upload Option**
+
 
 # Analysis Functions
 def get_risk_level(fraud_prob):
@@ -473,13 +547,15 @@ def show_visualizations():
         )
         st.plotly_chart(fig3)
 
+
+
+
 # Main App Layout
 if not st.session_state["authenticated"]:
-    image_path = "bank.jpg"
+    image_path = "login.jpg"
     st.sidebar.image(image_path, use_container_width=True)
     auth_choice = st.sidebar.radio("Select:", ["Login", "Signup", "Forgot Password"])
-    image_path = "bank.jpg"
-    st.sidebar.image(image_path, use_container_width=True)
+    
     if auth_choice == "Signup":
         signup()
     elif auth_choice == "Forgot Password":
@@ -496,9 +572,10 @@ if st.sidebar.button("Logout"):
 st.sidebar.title("🔍 Fraud Detection System")
 image_path = "bank.jpg"
 st.sidebar.image(image_path, use_container_width=True)
-menu = st.sidebar.radio("Choose Option:", ["Credit Card Fraud", "UPI Fraud", "Bank Account Fraud", "History"])
-image_path = "bank.jpg"
-st.sidebar.image(image_path, use_container_width=True)
+menu = st.sidebar.radio("Choose Option:", list(models.keys()) + ["CSV Upload"]+["History"])
+
+
+
 if menu == "History":
     st.subheader("📜 Transaction History")
     if not st.session_state["transactions"].empty:
@@ -508,76 +585,125 @@ if menu == "History":
         st.info("⚠️ No transaction history available.")
     st.stop()
 
-# Transaction Analysis
-st.title(f"🚀 {menu} Detection")
-selected_model = models[menu]
-features = selected_model["features"]
 
-# User Inputs
-user_inputs = {}
-for feature in features:
-    if feature in selected_model["numeric_ranges"]:
-        min_val, max_val = selected_model["numeric_ranges"][feature]
+if menu == "CSV Upload":
+    st.subheader("Upload CSV to Detect Fraud Transactions")
+    uploaded_file = st.file_uploader("Upload CSV File", type=["csv"])
+    
+    if uploaded_file is not None:
+        df = pd.read_csv(uploaded_file)
+        
+        # Check if DataFrame is empty
+        if df.empty:
+            st.warning("⚠️ The uploaded CSV file is empty.")
+        else:
+            fraud_column = detect_fraud_column(df)
+
+            if fraud_column:  # Ensure fraud_column is detected
+                fraud_value = detect_fraud_value(df, fraud_column)
+
+                if fraud_value is not None:
+                    fraud_df = df[df[fraud_column].astype(str).str.lower() == str(fraud_value).lower()]
+                    st.subheader("Fraud Transactions")
+                    st.dataframe(fraud_df)
+
+                    # Pie Chart
+                    fraud_counts = df[fraud_column].value_counts()
+                    if not fraud_counts.empty:  # Avoid plotting empty pie charts
+                        fig, ax = plt.subplots(figsize=(6, 6))
+                        labels = [str(label) for label in fraud_counts.index]
+                        ax.pie(fraud_counts, labels=labels, autopct="%1.1f%%", colors=["green", "red"], startangle=140)
+                        st.pyplot(fig)
+
+                    # Download Fraud Transactions
+                    if not fraud_df.empty:
+                        fraud_csv = fraud_df.to_csv(index=False)
+                        fraud_csv_bytes = io.BytesIO(fraud_csv.encode())
+                        st.download_button(
+                            label="Download Fraud Transactions CSV",
+                            data=fraud_csv_bytes,
+                            file_name="fraud_transactions.csv",
+                            mime="text/csv"
+                        )
+
+
+elif menu in models:  # Ensure this is an elif statement
+    selected_model = models[menu]
+    st.title(f"🚀 {menu} Detection")
+    
+    # Access features from the selected model
+    features = selected_model.get("features")  
+    user_inputs = {}
+    for feature in features:
+        if feature in selected_model["numeric_ranges"]:
+            min_val, max_val = selected_model["numeric_ranges"][feature]
         
         # Determine the type of the numeric input (float or int)
-        is_float = isinstance(min_val, float) or isinstance(max_val, float)
+            is_float = isinstance(min_val, float) or isinstance(max_val, float)
         
-        user_inputs[feature] = st.number_input(
-            f"{feature} *", 
-            min_value=float(min_val) if is_float else int(min_val), 
-            max_value=float(max_val) if is_float else int(max_val), 
-            step=0.01 if is_float else 1
-        )
-    elif feature in selected_model["categorical_features"]:
-        if feature in ["employment_status", "housing_status", "foreign_request", "phone_home_valid", "phone_mobile_valid"]:
-            user_inputs[feature] = st.selectbox(f"{feature} *", ["Select", "Yes", "No"])
-        elif feature == "gender":
-            user_inputs[feature] = st.selectbox(f"{feature} *", ["Select", "Male", "Female"])
-        elif feature in ["category", "MerchantCategory","merchant"]:
-            user_inputs[feature] = st.selectbox(f"{feature} *", ["Select", "Retail", "Service", "E-Commerce", "Utilities", "Other"])
-        elif feature in ["UnusualLocation", "UnusualAmount", "NewDevice","phone_home_valid","phone_mobile_valid","foreign_request","has_other_cards","email_is_free"]:
-            user_inputs[feature] = st.selectbox(f"{feature} *", ["Select", "Yes", "No"])
-        elif feature in ["payment_type","TransactionType"]:
-            user_inputs[feature]=st.selectbox(f"{feature} *",["Select","Credit Card", "Debit Card", "Net Banking", "UPI", "Wallet", "Other"])
-    else:
-        user_inputs[feature] = st.text_input(f"{feature} *", "0")
-
-if st.button("Analyze Transaction"):
-    # Check if all required fields are filled
-    if any(value in ["", "Select", None] for value in user_inputs.values()):
-        st.error("❌ Please fill in all required fields before making a prediction.")
-    else:
-        fraud_prob = predict_fraud(user_inputs, selected_model["rf_model"], 
-                                 selected_model["xgb_model"], features)
-        risk_level, risk_color = get_risk_level(fraud_prob)
-        
-        if risk_level == "High":
-            status = "Alert: High Risk Transaction"
-            alert_class = "alert-danger"
-        elif risk_level == "Medium":
-            status = "Caution: Medium Risk Transaction"
-            alert_class = "alert-warning"
+            user_inputs[feature] = st.number_input(
+                f"{feature} *", 
+                min_value=float(min_val) if is_float else int(min_val), 
+                max_value=float(max_val) if is_float else int(max_val), 
+                step=0.01 if is_float else 1
+            )
+        elif feature in selected_model["categorical_features"]:
+            if feature in ["employment_status", "housing_status", "foreign_request", "phone_home_valid", "phone_mobile_valid"]:
+                user_inputs[feature] = st.selectbox(f"{feature} *", ["Select", "Yes", "No"])
+            elif feature == "gender":
+                user_inputs[feature] = st.selectbox(f"{feature} *", ["Select", "Male", "Female"])
+            elif feature in ["category", "MerchantCategory","merchant"]:
+                user_inputs[feature] = st.selectbox(f"{feature} *", ["Select", "Retail", "Service", "E-Commerce", "Utilities", "Other"])
+            elif feature in ["UnusualLocation", "UnusualAmount", "NewDevice","phone_home_valid","phone_mobile_valid","foreign_request","has_other_cards","email_is_free"]:
+                user_inputs[feature] = st.selectbox(f"{feature} *", ["Select", "Yes", "No"])
+            elif feature in ["payment_type"]:
+                user_inputs[feature]=st.selectbox(f"{feature} *",["Select","Credit Card", "UPI", "Other"])
+            elif feature in ["TransactionType"]:
+                user_inputs[feature]=st.selectbox(f"{feature} *",["Select","P2P","P2M"])
         else:
-            status = "Safe: Low Risk Transaction"
-            alert_class = "alert-success"
+            user_inputs[feature] = st.text_input(f"{feature} *", "0")
+  
+    
+# User Inputs
+
+if menu in ["Credit Card Fraud", "UPI Fraud", "Bank Account Fraud"]:
+
+    if st.button("Analyze Transaction"):
+    # Check if all required fields are filled
+        if any(value in ["", "Select", None] for value in user_inputs.values()):
+            st.error("❌ Please fill in all required fields before making a prediction.")
+        else:
+            fraud_prob = predict_fraud(user_inputs, selected_model["rf_model"], 
+                                 selected_model["xgb_model"], features)
+            risk_level, risk_color = get_risk_level(fraud_prob)
+        
+            if risk_level == "High":
+                status = "Alert: High Risk Transaction"
+                alert_class = "alert-danger"
+            elif risk_level == "Medium":
+                status = "Caution: Medium Risk Transaction"
+                alert_class = "alert-warning"
+            else:
+                status = "Safe: Low Risk Transaction"
+                alert_class = "alert-success"
         
         # Add to transaction history
-        new_transaction = {
-            "Timestamp": datetime.now(),
-            "Transaction_Type": menu,
-            "Amount": float(user_inputs.get("amount", 0)),
-            "Fraud_Probability": fraud_prob,
-            "Risk_Level": risk_level,
-            "Model_Used": f"{menu}_Model"
-        }
-        st.session_state["transactions"] = pd.concat([
-            st.session_state["transactions"], 
-            pd.DataFrame([new_transaction])
-        ], ignore_index=True)
+            new_transaction = {
+                "Timestamp": datetime.now(),
+                "Transaction_Type": menu,
+                "Amount": float(user_inputs.get("amount", 0)),
+                "Fraud_Probability": fraud_prob,
+                "Risk_Level": risk_level,
+                "Model_Used": f"{menu}_Model"
+            }
+            st.session_state["transactions"] = pd.concat([
+                st.session_state["transactions"], 
+                pd.DataFrame([new_transaction])
+                ], ignore_index=True)
 
         # Show analysis results
-        show_analysis_results(fraud_prob, risk_level, risk_color, status, alert_class)
-        show_visualizations()
+            show_analysis_results(fraud_prob, risk_level, risk_color, status, alert_class)
+            show_visualizations()
 
 # CSS styling
 st.markdown("""
